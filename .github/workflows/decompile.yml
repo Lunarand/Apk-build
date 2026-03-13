@@ -1,0 +1,42 @@
+name: 1. Decompile APK
+
+on:
+  workflow_dispatch: # Allows you to trigger this manually from the Actions tab
+
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download Apktool
+        # Downloading a recent version of apktool for maximum compatibility
+        run: wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
+
+      - name: Decompile APK
+        run: |
+          # Finds the first .apk file in the input_apk folder
+          APK_FILE=$(ls input_apk/*.apk | head -n 1)
+          echo "Decompiling $APK_FILE..."
+          # The -f flag forces overwrite if the folder exists
+          java -jar apktool.jar d -f "$APK_FILE" -o unpacked_apk
+
+      - name: Zip the Unpacked Files
+        run: |
+          # Zips the entire unpacked directory
+          zip -r unpacked_apk.zip unpacked_apk/
+
+      - name: Upload Zipped Files as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unpacked-APK-Source
+          path: unpacked_apk.zip
+          retention-days: 7
