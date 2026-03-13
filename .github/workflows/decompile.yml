@@ -1,7 +1,12 @@
-name: 1. Decompile APK
+name: 1. Decompile APK from URL
 
 on:
-  workflow_dispatch: # Allows you to trigger this manually from the Actions tab
+  workflow_dispatch:
+    inputs: # This creates a text box to paste your URL when you run the action
+      apk_url:
+        description: 'Paste the direct download URL or Google Drive link'
+        required: true
+        type: string
 
 jobs:
   decompile:
@@ -17,22 +22,40 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install gdown (for Google Drive links)
+        run: pip install gdown
+
+      - name: Download APK from URL
+        run: |
+          # Create the folder dynamically so you don't even need to make it manually!
+          mkdir -p input_apk
+          cd input_apk
+          
+          URL="${{ github.event.inputs.apk_url }}"
+          
+          # Check if it is a Google Drive link
+          if [[ "$URL" == *"drive.google.com"* ]]; then
+            echo "Google Drive link detected. Downloading via gdown..."
+            gdown "$URL"
+          else
+            echo "Downloading from direct link..."
+            # Downloads the file and names it downloaded_app.apk
+            wget -O downloaded_app.apk "$URL"
+          fi
+          
+          cd ..
+
       - name: Download Apktool
-        # Downloading a recent version of apktool for maximum compatibility
         run: wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
 
       - name: Decompile APK
         run: |
-          # Finds the first .apk file in the input_apk folder
           APK_FILE=$(ls input_apk/*.apk | head -n 1)
           echo "Decompiling $APK_FILE..."
-          # The -f flag forces overwrite if the folder exists
           java -jar apktool.jar d -f "$APK_FILE" -o unpacked_apk
 
       - name: Zip the Unpacked Files
-        run: |
-          # Zips the entire unpacked directory
-          zip -r unpacked_apk.zip unpacked_apk/
+        run: zip -r unpacked_apk.zip unpacked_apk/
 
       - name: Upload Zipped Files as Artifact
         uses: actions/upload-artifact@v4
