@@ -1,0 +1,42 @@
+name: 2. Rebuild and Sign APK
+
+on:
+  workflow_dispatch: # Trigger manually after you upload your changes
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download Apktool & Uber-APK-Signer
+        run: |
+          wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
+          wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar -O signer.jar
+
+      - name: Rebuild APK
+        run: |
+          echo "Rebuilding APK from modified_source..."
+          # Builds the folder back into a new APK
+          java -jar apktool.jar b modified_source -o new_unsigned_app.apk
+
+      - name: Sign APK (Debug Key)
+        run: |
+          echo "Signing the new APK..."
+          # Signs the APK with a default debug keystore so Android allows installation
+          java -jar signer.jar -a new_unsigned_app.apk -o final_apk_dir
+
+      - name: Upload Final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Final-Modified-APK
+          path: final_apk_dir/*.apk
+          retention-days: 7
