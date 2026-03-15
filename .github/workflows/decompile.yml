@@ -39,15 +39,22 @@ jobs:
           elif [[ "$URL" == *"mediafire.com"* ]]; then
             echo "MediaFire link detected. Extracting the true direct link..."
             
-            # Scrapes the MediaFire webpage to find the actual hidden download button link
-            DIRECT_URL=$(curl -sL "$URL" | grep -oP 'href="\K[^"]+(?=" id="downloadButton")')
+            # Method 1: Look for the download button and extract the href, regardless of tag order
+            DIRECT_URL=$(curl -sL "$URL" | grep -i 'id="downloadButton"' | grep -oP 'href="\K[^"]+')
+            
+            # Method 2: If the button is missing, just hunt for any direct .apk link on the page
+            if [ -z "$DIRECT_URL" ]; then
+              echo "Primary extraction failed. Trying fallback method..."
+              DIRECT_URL=$(curl -sL "$URL" | grep -oP 'https?://[^"]+\.apk' | head -n 1)
+            fi
             
             if [ -z "$DIRECT_URL" ]; then
-              echo "Error: Could not extract the direct link. MediaFire might be asking for a Captcha."
+              echo "Error: Could not extract the direct link. MediaFire is either blocking GitHub's IP or asking for a Captcha."
               exit 1
             fi
             
-            echo "Successfully grabbed direct link! Downloading..."
+            echo "Successfully grabbed direct link: $DIRECT_URL"
+            echo "Downloading..."
             wget -q --show-progress -O downloaded_app.apk "$DIRECT_URL"
             
           else
