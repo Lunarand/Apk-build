@@ -75,12 +75,17 @@ jobs:
           echo "Decompiling $APK_FILE..."
           java -jar apktool.jar d -f "$APK_FILE" -o unpacked_apk
 
-      - name: Nuke the Ads Automatically
+      - name: Nuke Ads and Patch Android 13 Compatibility
         run: |
           echo "Hunting down the AdMob ID and replacing it with a fake one..."
           # This scans every XML and Smali file to break the connection to the ads
           find unpacked_apk -type f \( -name "*.xml" -o -name "*.smali" \) -exec sed -i 's/ca-app-pub-8008266621541329~2871788802/ca-app-pub-0000000000000000~0000000000/g' {} +
           echo "Ads successfully disabled!"
+          
+          echo "Applying Android 12+ extractNativeLibs compression fix..."
+          # This tells your phone not to panic about compressed files
+          sed -i 's/android:extractNativeLibs=\"false\"/android:extractNativeLibs=\"true\"/g' unpacked_apk/AndroidManifest.xml
+          echo "Compatibility patched!"
 
       - name: Rebuild APK
         run: |
@@ -90,7 +95,8 @@ jobs:
       - name: Sign APK (Debug Key)
         run: |
           echo "Signing the APK so Android allows installation..."
-          java -jar signer.jar -a new_unsigned_app.apk -o final_apk_dir
+          # Added --allowResign just in case old signatures linger
+          java -jar signer.jar -a new_unsigned_app.apk --allowResign -o final_apk_dir
 
       - name: Upload Final Ad-Free APK
         uses: actions/upload-artifact@v4
