@@ -73,9 +73,10 @@ jobs:
         run: |
           APK_FILE=$(ls input_apk/*.apk | head -n 1)
           echo "Decompiling $APK_FILE..."
-          java -jar apktool.jar d -f "$APK_FILE" -o unpacked_apk
+          # The -s flag prevents Apktool from touching the source code to avoid Android 13 corruption!
+          java -jar apktool.jar d -s -f "$APK_FILE" -o unpacked_apk
 
-      - name: Nuke Ads and Patch Android 13 Compatibility
+      - name: Nuke the Ads Automatically and Patch Android 13 Compatibility
         run: |
           echo "Hunting down the AdMob ID and replacing it with a fake one..."
           # This scans every XML and Smali file to break the connection to the ads
@@ -85,12 +86,14 @@ jobs:
           echo "Applying Android 12+ extractNativeLibs compression fix..."
           # This tells your phone not to panic about compressed files
           sed -i 's/android:extractNativeLibs=\"false\"/android:extractNativeLibs=\"true\"/g' unpacked_apk/AndroidManifest.xml
+          sed -i "s/android:extractNativeLibs='false'/android:extractNativeLibs='true'/g" unpacked_apk/AndroidManifest.xml
           echo "Compatibility patched!"
 
       - name: Rebuild APK
         run: |
           echo "Rebuilding the ad-free APK..."
-          java -jar apktool.jar b unpacked_apk -o new_unsigned_app.apk
+          # The --use-aapt2 flag builds the app exactly how Android 12+ wants it
+          java -jar apktool.jar b --use-aapt2 unpacked_apk -o new_unsigned_app.apk
 
       - name: Sign APK (Debug Key)
         run: |
