@@ -2,7 +2,7 @@ name: 1. Decompile APK from URL
 
 on:
   workflow_dispatch:
-    inputs: # This creates a text box to paste your URL when you run the action
+    inputs: 
       apk_url:
         description: 'Paste the direct download URL or Google Drive link'
         required: true
@@ -27,7 +27,7 @@ jobs:
 
       - name: Download APK from URL
         run: |
-          # Create the folder dynamically so you don't even need to make it manually!
+          # Create the folder dynamically
           mkdir -p input_apk
           cd input_apk
           
@@ -46,7 +46,8 @@ jobs:
           cd ..
 
       - name: Download Apktool
-        run: wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
+        # Updated to grab the latest v3.0.1 from the official GitHub Releases page
+        run: wget https://github.com/iBotPeaches/Apktool/releases/download/v3.0.1/apktool_3.0.1.jar -O apktool.jar
 
       - name: Decompile APK
         run: |
