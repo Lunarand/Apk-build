@@ -92,8 +92,8 @@ jobs:
       - name: Rebuild APK
         run: |
           echo "Rebuilding the ad-free APK..."
-          # The --use-aapt2 flag builds the app exactly how Android 12+ wants it
-          java -jar apktool.jar b --use-aapt2 unpacked_apk -o new_unsigned_app.apk
+          # Removed the deprecated flag since v3.0.1 defaults to the modern compiler anyway
+          java -jar apktool.jar b unpacked_apk -o new_unsigned_app.apk
 
       - name: Sign APK (Debug Key)
         run: |
