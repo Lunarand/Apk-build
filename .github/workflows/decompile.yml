@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs: 
       apk_url:
-        description: 'Paste the direct download URL or Google Drive link'
+        description: 'Paste your MediaFire, GDrive, or Direct URL'
         required: true
         type: string
 
@@ -22,31 +22,42 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install gdown (for Google Drive links)
+      - name: Install gdown
         run: pip install gdown
 
       - name: Download APK from URL
         run: |
-          # Create the folder dynamically
           mkdir -p input_apk
           cd input_apk
           
           URL="${{ github.event.inputs.apk_url }}"
           
-          # Check if it is a Google Drive link
           if [[ "$URL" == *"drive.google.com"* ]]; then
-            echo "Google Drive link detected. Downloading via gdown..."
+            echo "Google Drive link detected..."
             gdown "$URL"
+            
+          elif [[ "$URL" == *"mediafire.com"* ]]; then
+            echo "MediaFire link detected. Extracting the true direct link..."
+            
+            # Scrapes the MediaFire webpage to find the actual hidden download button link
+            DIRECT_URL=$(curl -sL "$URL" | grep -oP 'href="\K[^"]+(?=" id="downloadButton")')
+            
+            if [ -z "$DIRECT_URL" ]; then
+              echo "Error: Could not extract the direct link. MediaFire might be asking for a Captcha."
+              exit 1
+            fi
+            
+            echo "Successfully grabbed direct link! Downloading..."
+            wget -q --show-progress -O downloaded_app.apk "$DIRECT_URL"
+            
           else
-            echo "Downloading from direct link..."
-            # Downloads the file and names it downloaded_app.apk
-            wget -O downloaded_app.apk "$URL"
+            echo "Downloading from standard link..."
+            wget -q --show-progress -O downloaded_app.apk "$URL"
           fi
           
           cd ..
 
       - name: Download Apktool
-        # Updated to grab the latest v3.0.1 from the official GitHub Releases page
         run: wget https://github.com/iBotPeaches/Apktool/releases/download/v3.0.1/apktool_3.0.1.jar -O apktool.jar
 
       - name: Decompile APK
