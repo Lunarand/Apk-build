@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs: 
       apk_url:
-        description: 'Paste your MediaFire, GDrive, or Direct URL'
+        description: 'Paste your MediaFire, GDrive, APKPure, or Direct URL'
         required: true
         type: string
 
@@ -58,10 +58,34 @@ jobs:
             wget -q --show-progress -O downloaded_app.apk "$DIRECT_URL"
             
           else
-            echo "Downloading from standard link..."
-            wget -q --show-progress -O downloaded_app.apk "$URL"
+            echo "Downloading from standard link (APKPure/etc)..."
+            # The -U flag disguises GitHub as a normal browser to bypass APKPure bot protection
+            wget -q --show-progress -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O downloaded_app.apk "$URL"
           fi
           
+          cd ..
+
+      - name: Prepare Workspace (Handle APK or XAPK)
+        run: |
+          mkdir -p workspace
+          cd input_apk
+          # Check if the downloaded file is a ZIP archive (which means it's an XAPK)
+          if unzip -t downloaded_app.apk &> /dev/null; then
+            echo "XAPK format detected! Extracting split files..."
+            unzip downloaded_app.apk -d ../workspace
+            # Find the Base APK (the largest APK file is the core app, not a split piece)
+            BASE_APK_PATH=$(ls -S ../workspace/*.apk | head -n 1)
+            BASE_APK_NAME=$(basename "$BASE_APK_PATH")
+            echo "Base APK identified: $BASE_APK_NAME"
+            mv "$BASE_APK_PATH" ../workspace/base_target.apk
+            echo "$BASE_APK_NAME" > ../workspace/base_apk_original_name.txt
+            echo "is_xapk=true" > ../workspace/format.txt
+          else
+            echo "Standard APK format detected!"
+            cp downloaded_app.apk ../workspace/base_target.apk
+            echo "base_target.apk" > ../workspace/base_apk_original_name.txt
+            echo "is_xapk=false" > ../workspace/format.txt
+          fi
           cd ..
 
       - name: Download Apktool & Signer
@@ -71,10 +95,9 @@ jobs:
 
       - name: Decompile APK
         run: |
-          APK_FILE=$(ls input_apk/*.apk | head -n 1)
-          echo "Decompiling $APK_FILE..."
+          echo "Decompiling base_target.apk..."
           # The -s flag prevents Apktool from touching the source code to avoid Android 13 corruption!
-          java -jar apktool.jar d -s -f "$APK_FILE" -o unpacked_apk
+          java -jar apktool.jar d -s -f workspace/base_target.apk -o unpacked_apk
 
       - name: Nuke the Ads Automatically and Patch Android 13 Compatibility
         run: |
@@ -87,23 +110,59 @@ jobs:
           # This tells your phone not to panic about compressed files
           sed -i 's/android:extractNativeLibs=\"false\"/android:extractNativeLibs=\"true\"/g' unpacked_apk/AndroidManifest.xml
           sed -i "s/android:extractNativeLibs='false'/android:extractNativeLibs='true'/g" unpacked_apk/AndroidManifest.xml
+          
+          echo "Applying Split APK (App Bundle) Bypass..."
+          # This tells Android the app does NOT need missing puzzle pieces to install
+          sed -i 's/android:isSplitRequired=\"true\"/android:isSplitRequired=\"false\"/g' unpacked_apk/AndroidManifest.xml
+          sed -i "s/android:isSplitRequired='true'/android:isSplitRequired='false'/g" unpacked_apk/AndroidManifest.xml
+          sed -i 's/"com.android.vending.splits.required" android:value="true"/"com.android.vending.splits.required" android:value="false"/g' unpacked_apk/AndroidManifest.xml
+          
           echo "Compatibility patched!"
 
       - name: Rebuild APK
         run: |
           echo "Rebuilding the ad-free APK..."
-          # Removed the deprecated flag since v3.0.1 defaults to the modern compiler anyway
-          java -jar apktool.jar b unpacked_apk -o new_unsigned_app.apk
+          # Overwrite the base_target.apk in the workspace with our newly modded version
+          java -jar apktool.jar b unpacked_apk -o workspace/base_target.apk
 
       - name: Sign APK (Debug Key)
         run: |
-          echo "Signing the APK so Android allows installation..."
+          echo "Signing the APK(s) so Android allows installation..."
           # Added --allowResign just in case old signatures linger
-          java -jar signer.jar -a new_unsigned_app.apk --allowResign -o final_apk_dir
+          # We sign the entire workspace folder so if it's an XAPK, every single split piece gets the exact same signature
+          java -jar signer.jar -a workspace --allowResign -o final_signed_dir
+
+      - name: Package Final Ad-Free App
+        run: |
+          mkdir -p final_output
+          IS_XAPK=$(cat workspace/format.txt)
+          ORIGINAL_NAME=$(cat workspace/base_apk_original_name.txt)
+          
+          # Replace original unsigned APKs in workspace with the newly signed ones, restoring their original names
+          for signed_apk in final_signed_dir/*-aligned-debugSigned.apk; do
+            filename=$(basename "$signed_apk" | sed 's/-aligned-debugSigned//')
+            if [ "$filename" == "base_target.apk" ]; then
+              cp "$signed_apk" "workspace/$ORIGINAL_NAME"
+            else
+              cp "$signed_apk" "workspace/$filename"
+            fi
+          done
+          
+          # Clean up our temporary trackers
+          rm -f workspace/base_target.apk workspace/base_apk_original_name.txt workspace/format.txt
+          
+          cd workspace
+          if [ "$IS_XAPK" == "is_xapk=true" ]; then
+            echo "Packaging all files back into an XAPK..."
+            zip -r ../final_output/Ad-Free-App.xapk *
+          else
+            echo "Packaging as a standard APK..."
+            cp "$ORIGINAL_NAME" ../final_output/Ad-Free-App.apk
+          fi
 
       - name: Upload Final Ad-Free APK
         uses: actions/upload-artifact@v4
         with:
           name: Ad-Free-App
-          path: final_apk_dir/*.apk
+          path: final_output/*
           retention-days: 7
